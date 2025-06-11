@@ -92,10 +92,15 @@ export const searchIntegratedPlaces = async (
     // 1. 카카오 검색
     let kakaoPlaces: any[] = [];
     try {
+      console.log(`🔍 카카오 API 검색 시작: "${query}"`);
       kakaoPlaces = await searchPlaces(query);
-      console.log('카카오 검색 결과:', kakaoPlaces.length, '개');
+      console.log(`✅ 카카오 검색 성공: ${kakaoPlaces.length}개 결과`);
+      if (kakaoPlaces.length === 0) {
+        console.warn(`⚠️  "${query}" 검색 결과 없음 - 검색어를 확인해주세요`);
+      }
     } catch (error) {
-      console.error('카카오 검색 실패:', error);
+      console.error(`❌ 카카오 검색 실패 (${query}):`, error);
+      console.log('🔄 대체 데이터 생성이 필요할 수 있습니다.');
       // 카카오 검색이 실패해도 빈 배열로 계속 진행
       kakaoPlaces = [];
     }
@@ -169,8 +174,18 @@ export const searchIntegratedPlaces = async (
       })
     }
     
-    console.log('통합 검색 완료:', places.length, '개 장소');
-    return places
+      console.log(`📊 통합 검색 완료: ${places.length}개 장소 (${query})`);
+  
+  // 결과가 없으면 더 자세한 디버깅 정보 출력
+  if (places.length === 0) {
+    console.log('🔍 검색 결과가 없는 이유 분석:');
+    console.log('  - 카카오 API 호출 상태 확인 필요');
+    console.log('  - API 키 설정 확인 필요');
+    console.log('  - 네트워크 연결 상태 확인 필요');
+    console.log(`  - 검색어 "${query}" 적절성 확인 필요`);
+  }
+  
+  return places
   } catch (error) {
     console.error('통합 장소 검색 오류:', error)
     // 빈 배열 대신 에러를 다시 던져서 상위에서 처리하도록 함
@@ -241,23 +256,15 @@ export const getPopularPlacesByRegion = async (
   try {
     console.log('지역별 인기 장소 검색 시작:', { region, preferences, limit });
     
-    // 더 구체적이고 다양한 검색 쿼리 (음식점 강화)
+    // 더 구체적이고 다양한 검색 쿼리
     const searchQueries = [
-      // 음식점 관련 검색 강화
       `${region} 맛집`,
-      `${region} 한식`,
-      `${region} 식당`,
-      `${region} 음식점`,
-      `${region} 한정식`,
-      `${region} 고기집`,
-      // 관광 및 문화
       `${region} 관광지`,
-      `${region} 명소`,
-      `${region} 박물관`,
-      `${region} 공원`,
-      // 기타
       `${region} 카페`,
       `${region} 쇼핑`,
+      `${region} 박물관`,
+      `${region} 공원`,
+      `${region} 명소`,
       `${region} 체험`,
       // 지역별 특화 검색어 추가
       ...getRegionSpecificQueries(region)
@@ -437,6 +444,26 @@ const generateSamplePlaces = (region: string, limit: number): RecommendedPlace[]
   
   const places = samplePlaces[region] || defaultPlaces;
   return places.slice(0, limit);
+};
+
+// API 테스트 함수 (디버깅용)
+export const testKakaoAPI = async (testQuery: string = '전주 맛집'): Promise<void> => {
+  try {
+    console.log(`🧪 카카오 API 테스트 시작: "${testQuery}"`);
+    const results = await searchIntegratedPlaces(testQuery);
+    console.log(`✅ API 테스트 성공: ${results.length}개 결과`);
+    
+    if (results.length > 0) {
+      console.log('📋 첫 3개 결과 샘플:');
+      results.slice(0, 3).forEach((place, index) => {
+        console.log(`  ${index + 1}. ${place.name} (${place.category}) - ⭐${place.rating}`);
+      });
+    } else {
+      console.warn('⚠️  API 테스트 실패: 결과 없음');
+    }
+  } catch (error) {
+    console.error('❌ API 테스트 실패:', error);
+  }
 };
 
 // 지역별 특화 검색어
@@ -784,39 +811,20 @@ const categorizePlacesByType = (places: RecommendedPlace[]) => {
       p.category.includes('박물관') ||
       p.category.includes('미술관')
     ),
-    restaurants: places.filter(p => {
-      // 더 포괄적인 음식점 인식
-      const hasRestaurantKeyword = 
-        p.category.includes('음식점') || 
-        p.category.includes('맛집') ||
-        p.category.includes('한식') ||
-        p.category.includes('중식') ||
-        p.category.includes('일식') ||
-        p.category.includes('양식') ||
-        p.category.includes('분식') ||
-        p.category.includes('치킨') ||
-        p.category.includes('피자') ||
-        p.category.includes('햄버거') ||
-        p.category.includes('고기집') ||
-        p.category.includes('해산물') ||
-        p.category.includes('국수') ||
-        p.category.includes('찜닭') ||
-        p.category.includes('족발') ||
-        p.category.includes('보쌈') ||
-        p.name.includes('식당') ||
-        p.name.includes('맛집') ||
-        p.name.includes('전문점');
-
-      // 카페는 확실히 제외하되, 너무 엄격하지 않게
-      const isCafe = 
-        p.category.includes('카페') ||
-        p.category.includes('커피') ||
-        (p.category.includes('디저트') && !p.category.includes('음식점')) ||
-        p.name.toLowerCase().includes('카페') ||
-        p.name.toLowerCase().includes('coffee');
-
-      return hasRestaurantKeyword && !isCafe;
-    }),
+    restaurants: places.filter(p => 
+      (p.category.includes('음식점') || 
+      p.category.includes('맛집') ||
+      p.category.includes('한식') ||
+      p.category.includes('중식') ||
+      p.category.includes('일식') ||
+       p.category.includes('양식')) &&
+      // 카페 제외
+      !p.category.includes('카페') &&
+      !p.category.includes('커피') &&
+      !p.category.includes('디저트') &&
+      !p.name.toLowerCase().includes('카페') &&
+      !p.name.toLowerCase().includes('커피')
+    ),
     cafes: places.filter(p => 
       p.category.includes('카페') || 
       p.category.includes('커피') ||
@@ -1042,70 +1050,33 @@ const generateDayItinerary = (
     
     let selectedPlaces = filteredPlaces.slice(0, actualCount);
     
-    // 식사 시간대에 장소가 없으면 전체 카테고리에서 다시 검색 시도
+    // 식사 시간대에 장소가 없으면 대체 식당 생성 (필수)
     if (slot.activityType === 'dining' && 
         (slot.timeSlot === 'early_morning' || slot.timeSlot === 'lunch' || slot.timeSlot === 'evening') &&
         selectedPlaces.length === 0) {
       
-      console.warn(`${dayIndex + 1}일차 ${slot.purpose}에 적절한 음식점을 찾지 못해 전체 장소에서 다시 검색합니다.`);
+      console.warn(`🍽️ ${dayIndex + 1}일차 ${slot.purpose}: 적절한 음식점을 찾지 못했습니다.`);
+      console.log(`📍 대체 식당 생성: "${destination} 지역 ${slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'} 맛집"`);
+      console.log('💡 실제 식당 추천을 위해 카카오 API 연결 상태를 확인하세요.');
       
-      // 전체 장소에서 음식점 관련 키워드로 재검색
-      const allPlaces = Object.values(categorizedPlaces).flat();
-      const emergencyRestaurants = allPlaces.filter(p => {
-        // 더 넓은 범위에서 음식점 찾기
-        const nameIncludesFood = 
-          p.name.includes('식당') ||
-          p.name.includes('맛집') ||
-          p.name.includes('전문점') ||
-          p.name.includes('집') ||
-          p.name.includes('방') ||
-          p.name.includes('원');
-        
-        const categoryIncludesFood = 
-          p.category.includes('음식') ||
-          p.category.includes('식당') ||
-          p.category.includes('한식') ||
-          p.category.includes('중식') ||
-          p.category.includes('일식') ||
-          p.category.includes('양식') ||
-          p.category.includes('분식') ||
-          p.category.includes('치킨') ||
-          p.category.includes('피자');
-        
-        const notCafe = 
-          !p.category.includes('카페') &&
-          !p.category.includes('커피') &&
-          !p.name.toLowerCase().includes('카페');
-          
-        return (nameIncludesFood || categoryIncludesFood) && notCafe && 
-               !usedPlaces.has(p.id) && !dayPlan.some(dp => dp.id === p.id);
-      });
+      // 기본 식당 정보 생성
+      const fallbackRestaurant: RecommendedPlace = {
+        id: `fallback_restaurant_${dayIndex}_${slot.timeSlot}`,
+        name: `${destination} 지역 ${slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'} 맛집`,
+        category: '음식점',
+        address: `${destination} 중심가`,
+        lat: categorizedPlaces.attractions[0]?.lat || 37.5665,
+        lng: categorizedPlaces.attractions[0]?.lng || 126.9780,
+        rating: 4.2,
+        reviewCount: 150,
+        description: `${destination} 지역의 인기 ${slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'} 식당`,
+        phone: '',
+        tags: ['음식점', '맛집', slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'],
+        source: 'kakao' as const,
+        suggestedVisitDuration: 90
+      };
       
-      if (emergencyRestaurants.length > 0) {
-        selectedPlaces = emergencyRestaurants.slice(0, 1);
-        console.log(`대체 음식점 발견: ${selectedPlaces[0].name}`);
-      } else {
-        // 정말로 음식점이 없는 경우에만 대체 식당 생성
-        console.warn(`${dayIndex + 1}일차 ${slot.purpose}에 적절한 음식점을 찾지 못해 대체 식당을 생성합니다.`);
-        
-        const fallbackRestaurant: RecommendedPlace = {
-          id: `fallback_restaurant_${dayIndex}_${slot.timeSlot}`,
-          name: `${destination} 지역 ${slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'} 맛집`,
-          category: '음식점',
-          address: `${destination} 중심가`,
-          lat: categorizedPlaces.attractions[0]?.lat || 37.5665,
-          lng: categorizedPlaces.attractions[0]?.lng || 126.9780,
-          rating: 4.2,
-          reviewCount: 150,
-          description: `${destination} 지역의 인기 ${slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'} 식당`,
-          phone: '',
-          tags: ['음식점', '맛집', slot.purpose === '아침 식사' ? '아침' : slot.purpose === '점심 식사' ? '점심' : '저녁'],
-          source: 'kakao' as const,
-          suggestedVisitDuration: 90
-        };
-        
-        selectedPlaces = [fallbackRestaurant];
-      }
+      selectedPlaces = [fallbackRestaurant];
     }
     
     selectedPlaces.forEach((place, index) => {
